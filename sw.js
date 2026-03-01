@@ -1,4 +1,5 @@
-const CACHE_NAME = 'minesweeper-cache-v1';
+// At the top of sw.js
+const CACHE_NAME = 'minesweeper-cache-v2';
 const urlsToCache = [
     './',
     './index.html',

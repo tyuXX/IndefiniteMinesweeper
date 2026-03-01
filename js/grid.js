@@ -22,6 +22,7 @@ class InfiniteGrid {
 
         this.exploredCount = 0;
         this.flaggedCount = 0;
+        this.lives = 3;
         this.gameOver = false;
 
         // Ensure the first click and its neighbors are safe
@@ -101,7 +102,10 @@ class InfiniteGrid {
 
         if (cell.isMine) {
             cell.isRevealed = true;
-            this.gameOver = true;
+            this.lives--;
+            if (this.lives <= 0) {
+                this.gameOver = true;
+            }
             return false; // Hit a mine
         }
 
@@ -197,6 +201,7 @@ class InfiniteGrid {
             difficulty: this.difficulty,
             exploredCount: this.exploredCount,
             flaggedCount: this.flaggedCount,
+            lives: this.lives,
             gameOver: this.gameOver,
             safeZoneMinX: this.safeZoneMinX,
             safeZoneMaxX: this.safeZoneMaxX,
@@ -213,6 +218,7 @@ class InfiniteGrid {
         this.difficulty = data.difficulty;
         this.exploredCount = data.exploredCount;
         this.flaggedCount = data.flaggedCount;
+        this.lives = data.lives;
         this.gameOver = data.gameOver;
         this.safeZoneMinX = data.safeZoneMinX;
         this.safeZoneMaxX = data.safeZoneMaxX;

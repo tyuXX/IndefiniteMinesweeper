@@ -141,6 +141,7 @@ function handleInteraction(x, y, action) {
 function updateUI() {
     document.getElementById('mines').innerText = grid.flaggedCount;
     document.getElementById('explored').innerText = grid.exploredCount;
+    document.getElementById('lives').innerText = grid.lives;
 }
 
 function draw() {
@@ -195,6 +196,15 @@ document.getElementById('newGameBtn').addEventListener('click', () => {
     cameraY = 0;
     updateUI();
     document.getElementById('game-over').classList.add('hidden');
+    saveState();
+    draw();
+});
+
+document.getElementById('suicideBtn').addEventListener('click', () => {
+    grid.lives = 0;
+    grid.gameOver = true;
+    document.getElementById('game-over').classList.remove('hidden');
+    updateUI();
     saveState();
     draw();
 });

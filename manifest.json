@@ -1,6 +1,6 @@
 {
   "name": "Indefinite Minesweeper",
-  "short_name": "Minesweeper",
+  "short_name": "IDMS",
   "description": "Infinite Minesweeper game",
   "start_url": "./index.html",
   "display": "standalone",
