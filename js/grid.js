@@ -47,20 +47,7 @@ class InfiniteGrid {
         // Determine if it's a mine using coordinates and seed
         let isMine = false;
         if (this.hasFirstClick) {
-            // Check if in safe zone
-            if (!(x >= this.safeZoneMinX && x <= this.safeZoneMaxX && y >= this.safeZoneMinY && y <= this.safeZoneMaxY)) {
-                // Procedural generation: hash the coordinates + seed
-                // Create a deterministic hash for this coordinate
-                let hash = (x * 73856093 ^ y * 19349663 ^ this.seed);
-                hash = (hash ^ (hash >>> 16)) * 0x85ebca6b;
-                hash = (hash ^ (hash >>> 13)) * 0xc2b2ae35;
-                hash = hash ^ (hash >>> 16);
-
-                // Convert to float 0-1
-                // JS bitwise operations are 32-bit signed, use >>> 0 for unsigned
-                const rand = (hash >>> 0) / 4294967296;
-                isMine = rand < this.difficulty;
-            }
+            isMine = this._determineIsMine(x, y);
         }
 
         const cell = {
@@ -71,6 +58,24 @@ class InfiniteGrid {
         };
         this.cells.set(key, cell);
         return cell;
+    }
+
+    _determineIsMine(x, y) {
+        // Check if in safe zone
+        if (x >= this.safeZoneMinX && x <= this.safeZoneMaxX && y >= this.safeZoneMinY && y <= this.safeZoneMaxY) {
+            return false;
+        }
+
+        // Procedural generation: hash the coordinates + seed
+        // Create a deterministic hash for this coordinate
+        let hash = (x * 73856093 ^ y * 19349663 ^ this.seed);
+        hash = (hash ^ (hash >>> 16)) * 0x85ebca6b;
+        hash = (hash ^ (hash >>> 13)) * 0xc2b2ae35;
+        hash = hash ^ (hash >>> 16);
+
+        // Convert to float 0-1
+        const rand = (hash >>> 0) / 4294967296;
+        return rand < this.difficulty;
     }
 
     calculateAdjacent(cx, cy) {
@@ -95,6 +100,12 @@ class InfiniteGrid {
             this.safeZoneMinY = y - 2;
             this.safeZoneMaxY = y + 2;
             this.hasFirstClick = true;
+
+            // Re-evaluate all previously generated cells now that safe zone is known
+            for (const [key, cell] of this.cells) {
+                const [cx, cy] = key.split(',').map(Number);
+                cell.isMine = this._determineIsMine(cx, cy);
+            }
         }
 
         const cell = this.getCell(x, y);
