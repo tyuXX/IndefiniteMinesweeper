@@ -22,6 +22,7 @@ class InfiniteGrid {
 
         this.exploredCount = 0;
         this.flaggedCount = 0;
+        this.totalLives = 3;
         this.lives = 3;
         this.gameOver = false;
 
@@ -131,6 +132,10 @@ class InfiniteGrid {
 
             currCell.isRevealed = true;
             this.exploredCount++;
+            if (this.exploredCount > Math.floor(100 * this.totalLives * (Math.log10(this.totalLives) + 1))) {
+                this.totalLives++;
+                this.lives++;
+            }
 
             if (currCell.adjacentMines === -1) {
                 currCell.adjacentMines = this.calculateAdjacent(cx, cy);
@@ -212,6 +217,7 @@ class InfiniteGrid {
             difficulty: this.difficulty,
             exploredCount: this.exploredCount,
             flaggedCount: this.flaggedCount,
+            totalLives: this.totalLives,
             lives: this.lives,
             gameOver: this.gameOver,
             safeZoneMinX: this.safeZoneMinX,
@@ -229,6 +235,7 @@ class InfiniteGrid {
         this.difficulty = data.difficulty;
         this.exploredCount = data.exploredCount;
         this.flaggedCount = data.flaggedCount;
+        this.totalLives = data.totalLives;
         this.lives = data.lives;
         this.gameOver = data.gameOver;
         this.safeZoneMinX = data.safeZoneMinX;

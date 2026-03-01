@@ -45,6 +45,9 @@ let camStartY = 0;
 let hasDragged = false;
 let hoverX = null;
 let hoverY = null;
+let flagMode = false;
+let longPressTimeout = null;
+let lastPinchDist = null;
 
 function screenToWorld(sx, sy) {
     const cx = sx - canvas.width / 2;
@@ -62,14 +65,47 @@ canvas.addEventListener('pointerdown', e => {
     dragStartY = e.clientY;
     camStartX = cameraX;
     camStartY = cameraY;
+
+    // Long press to flag
+    if (e.pointerType === 'touch') {
+        clearTimeout(longPressTimeout);
+        longPressTimeout = setTimeout(() => {
+            if (!hasDragged) {
+                const worldPos = screenToWorld(e.clientX, e.clientY);
+                handleInteraction(worldPos.x, worldPos.y, 'flag');
+                navigator.vibrate?.(50); // Haptic feedback
+                isDragging = false; // Prevent drag after long press
+            }
+        }, 500);
+    }
+
     if (e.button === 1) e.preventDefault(); // middle click panning
 });
 
+const activePointers = new Map();
+
 window.addEventListener('pointermove', e => {
-    if (isDragging) {
+    activePointers.set(e.pointerId, e);
+
+    if (activePointers.size === 2) {
+        // Pinch to zoom
+        const [p1, p2] = Array.from(activePointers.values());
+        const dist = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+
+        if (lastPinchDist) {
+            const zoomDelta = (dist - lastPinchDist) * 0.5;
+            applyZoom(zoomDelta);
+        }
+        lastPinchDist = dist;
+        hasDragged = true;
+        clearTimeout(longPressTimeout);
+    } else if (isDragging) {
         const dx = e.clientX - dragStartX;
         const dy = e.clientY - dragStartY;
-        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasDragged = true;
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+            hasDragged = true;
+            clearTimeout(longPressTimeout);
+        }
         cameraX = camStartX - dx;
         cameraY = camStartY - dy;
         draw();
@@ -84,13 +120,25 @@ window.addEventListener('pointermove', e => {
 });
 
 window.addEventListener('pointerup', e => {
+    activePointers.delete(e.pointerId);
+    if (activePointers.size < 2) lastPinchDist = null;
+
     isDragging = false;
-    if (!hasDragged && e.button !== 2) { // 2 is right click
+    clearTimeout(longPressTimeout);
+
+    if (!hasDragged && e.button !== 2) {
         const worldPos = screenToWorld(e.clientX, e.clientY);
-        handleInteraction(worldPos.x, worldPos.y, e.button === 1 ? 'chord' : 'reveal');
+        const action = flagMode ? 'flag' : (e.button === 1 ? 'chord' : 'reveal');
+        handleInteraction(worldPos.x, worldPos.y, action);
     } else if (hasDragged) {
         saveState();
     }
+});
+
+window.addEventListener('pointercancel', e => {
+    activePointers.delete(e.pointerId);
+    clearTimeout(longPressTimeout);
+    isDragging = false;
 });
 
 canvas.addEventListener('contextmenu', e => {
@@ -105,8 +153,12 @@ canvas.addEventListener('contextmenu', e => {
 canvas.addEventListener('wheel', e => {
     e.preventDefault();
     const zoomFactor = -e.deltaY * 0.01;
+    applyZoom(zoomFactor * 5);
+}, { passive: false });
+
+function applyZoom(delta) {
     const oldCellSize = CELL_SIZE;
-    CELL_SIZE = Math.min(Math.max(20, CELL_SIZE + zoomFactor * 5), 80);
+    CELL_SIZE = Math.min(Math.max(20, CELL_SIZE + delta), 100);
 
     // Zoom toward center
     const scale = CELL_SIZE / oldCellSize;
@@ -116,7 +168,7 @@ canvas.addEventListener('wheel', e => {
     draw();
     clearTimeout(window.zoomSaveTimeout);
     window.zoomSaveTimeout = setTimeout(saveState, 500);
-}, { passive: false });
+}
 
 function handleInteraction(x, y, action) {
     if (grid.gameOver) return;
@@ -207,6 +259,19 @@ document.getElementById('suicideBtn').addEventListener('click', () => {
     updateUI();
     saveState();
     draw();
+});
+
+document.getElementById('flagBtn').addEventListener('click', () => {
+    flagMode = !flagMode;
+    document.getElementById('flagBtn').classList.toggle('active', flagMode);
+});
+
+document.getElementById('zoomInBtn').addEventListener('click', () => {
+    applyZoom(10);
+});
+
+document.getElementById('zoomOutBtn').addEventListener('click', () => {
+    applyZoom(-10);
 });
 
 document.getElementById('recenterBtn').addEventListener('click', () => {
