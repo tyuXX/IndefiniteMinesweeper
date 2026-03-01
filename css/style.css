@@ -6,7 +6,7 @@
     --success: #3fb950;
     --panel-bg: rgba(22, 27, 34, 0.7);
     --panel-border: rgba(240, 246, 252, 0.1);
-    
+
     --cell-hidden: #21262d;
     --cell-hidden-hover: #30363d;
     --cell-revealed: #0d1117;
@@ -73,6 +73,7 @@ h1 {
     font-weight: 800;
     background: linear-gradient(135deg, #58a6ff, #bc8cff);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
     text-shadow: 0 4px 12px rgba(88, 166, 255, 0.3);
 }
@@ -203,6 +204,7 @@ button:active {
         align-items: center;
         gap: 15px;
     }
+
     h1 {
         font-size: 1.25rem;
     }

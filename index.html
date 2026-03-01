@@ -7,6 +7,8 @@
     <title>Indefinite Minesweeper</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
 </head>
 
 <body>
@@ -14,7 +16,6 @@
         <canvas id="canvas"></canvas>
         <div id="ui-layer">
             <div id="header">
-                <h1>Indefinite Minesweeper</h1>
                 <div id="stats">
                     <div class="stat-box">
                         <span class="stat-label">Flagged</span>
@@ -49,6 +50,17 @@
     </div>
     <script src="js/grid.js"></script>
     <script src="js/script.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').then(registration => {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                }).catch(err => {
+                    console.error('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+    </script>
 </body>
 
 </html>

@@ -88,6 +88,8 @@ window.addEventListener('pointerup', e => {
     if (!hasDragged && e.button !== 2) { // 2 is right click
         const worldPos = screenToWorld(e.clientX, e.clientY);
         handleInteraction(worldPos.x, worldPos.y, e.button === 1 ? 'chord' : 'reveal');
+    } else if (hasDragged) {
+        saveState();
     }
 });
 
@@ -112,6 +114,8 @@ canvas.addEventListener('wheel', e => {
     cameraY *= scale;
 
     draw();
+    clearTimeout(window.zoomSaveTimeout);
+    window.zoomSaveTimeout = setTimeout(saveState, 500);
 }, { passive: false });
 
 function handleInteraction(x, y, action) {
@@ -131,6 +135,7 @@ function handleInteraction(x, y, action) {
     if (grid.gameOver) {
         document.getElementById('game-over').classList.remove('hidden');
     }
+    saveState();
 }
 
 function updateUI() {
@@ -190,14 +195,50 @@ document.getElementById('newGameBtn').addEventListener('click', () => {
     cameraY = 0;
     updateUI();
     document.getElementById('game-over').classList.add('hidden');
+    saveState();
     draw();
 });
 
 document.getElementById('recenterBtn').addEventListener('click', () => {
     cameraX = 0;
     cameraY = 0;
+    saveState();
     draw();
 });
 
+function saveState() {
+    const state = {
+        grid: grid.serialize(),
+        camera: { x: cameraX, y: cameraY }
+    };
+    try {
+        localStorage.setItem('minesweeper_save', JSON.stringify(state));
+    } catch (e) {
+        console.error("Failed to save game state", e);
+    }
+}
+
+function loadState() {
+    try {
+        const saved = localStorage.getItem('minesweeper_save');
+        if (saved) {
+            const state = JSON.parse(saved);
+            grid = new InfiniteGrid();
+            grid.deserialize(state.grid);
+            cameraX = state.camera.x;
+            cameraY = state.camera.y;
+            updateUI();
+            if (grid.gameOver) {
+                document.getElementById('game-over').classList.remove('hidden');
+            }
+            return true;
+        }
+    } catch (e) {
+        console.error("Failed to load game state", e);
+    }
+    return false;
+}
+
 // Initialization
+loadState();
 resizeCanvas(); // Calls draw()

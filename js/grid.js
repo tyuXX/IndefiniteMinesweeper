@@ -179,4 +179,62 @@ class InfiniteGrid {
         }
         return survived;
     }
+
+    serialize() {
+        const revealed = [];
+        const flagged = [];
+
+        for (const [key, cell] of this.cells.entries()) {
+            if (cell.isRevealed) {
+                revealed.push(key);
+            } else if (cell.isFlagged) {
+                flagged.push(key);
+            }
+        }
+
+        return {
+            seed: this.seed,
+            difficulty: this.difficulty,
+            exploredCount: this.exploredCount,
+            flaggedCount: this.flaggedCount,
+            gameOver: this.gameOver,
+            safeZoneMinX: this.safeZoneMinX,
+            safeZoneMaxX: this.safeZoneMaxX,
+            safeZoneMinY: this.safeZoneMinY,
+            safeZoneMaxY: this.safeZoneMaxY,
+            hasFirstClick: this.hasFirstClick,
+            revealed: revealed,
+            flagged: flagged
+        };
+    }
+
+    deserialize(data) {
+        this.seed = data.seed;
+        this.difficulty = data.difficulty;
+        this.exploredCount = data.exploredCount;
+        this.flaggedCount = data.flaggedCount;
+        this.gameOver = data.gameOver;
+        this.safeZoneMinX = data.safeZoneMinX;
+        this.safeZoneMaxX = data.safeZoneMaxX;
+        this.safeZoneMinY = data.safeZoneMinY;
+        this.safeZoneMaxY = data.safeZoneMaxY;
+        this.hasFirstClick = data.hasFirstClick;
+
+        this.cells.clear();
+
+        for (const key of data.revealed) {
+            const [x, y] = key.split(',').map(Number);
+            const cell = this.getCell(x, y);
+            cell.isRevealed = true;
+            if (cell.adjacentMines === -1) {
+                cell.adjacentMines = this.calculateAdjacent(x, y);
+            }
+        }
+
+        for (const key of data.flagged) {
+            const [x, y] = key.split(',').map(Number);
+            const cell = this.getCell(x, y);
+            cell.isFlagged = true;
+        }
+    }
 }
