@@ -5,8 +5,10 @@ const urlsToCache = [
     './css/style.css',
     './js/grid.js',
     './js/script.js',
+    './js/v.js',
     './manifest.json',
     './icon.svg',
+    './hash.txt',
     'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap'
 ];
 
@@ -40,21 +42,18 @@ self.addEventListener('fetch', event => {
     if (event.request.method !== 'GET' || !event.request.url.startsWith('http')) return;
 
     event.respondWith(
-        caches.open(CACHE_NAME).then(cache => {
-            return cache.match(event.request).then(cachedResponse => {
-                const fetchPromise = fetch(event.request).then(networkResponse => {
-                    if (networkResponse.ok) {
-                        cache.put(event.request, networkResponse.clone());
-                    }
-                    return networkResponse;
-                }).catch(() => {
-                    // Fallback to cache if network fails entirely
-                    return cachedResponse;
-                });
-
-                // Return cache immediately if available, otherwise wait for network
-                return cachedResponse || fetchPromise;
+        caches.open(CACHE_NAME).then(async cache => {
+            const cachedResponse = await cache.match(event.request);
+            const fetchPromise = fetch(event.request).then(networkResponse => {
+                if (networkResponse.ok) {
+                    cache.put(event.request, networkResponse.clone());
+                }
+                return networkResponse;
+            }).catch(() => {
+                // Fallback to cache if network fails entirely
+                return cachedResponse;
             });
+            return cachedResponse || fetchPromise;
         })
     );
 });
