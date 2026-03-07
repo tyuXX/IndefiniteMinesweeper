@@ -78,7 +78,7 @@ canvas:active {
     bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
-    font-size: 6px;
+    font-size: 12px;
 }
 
 h1 {

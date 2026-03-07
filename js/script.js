@@ -6,6 +6,10 @@ let CELL_SIZE = 40;
 let cameraX = 0;
 let cameraY = 0;
 
+// Waypoint system
+let waypoints = [];
+let currentWaypointIndex = -1;
+
 // Colors matching CSS var naming roughly
 const colors = {
     hidden: '#21262d',
@@ -48,6 +52,7 @@ let hoverY = null;
 let flagMode = false;
 let longPressTimeout = null;
 let lastPinchDist = null;
+let longPressTriggered = false;
 
 function screenToWorld(sx, sy) {
     const cx = sx - canvas.width / 2;
@@ -61,6 +66,7 @@ function screenToWorld(sx, sy) {
 canvas.addEventListener('pointerdown', e => {
     isDragging = true;
     hasDragged = false;
+    longPressTriggered = false; // Reset long press flag
     dragStartX = e.clientX;
     dragStartY = e.clientY;
     camStartX = cameraX;
@@ -75,6 +81,7 @@ canvas.addEventListener('pointerdown', e => {
                 handleInteraction(worldPos.x, worldPos.y, 'flag');
                 navigator.vibrate?.(50); // Haptic feedback
                 isDragging = false; // Prevent drag after long press
+                longPressTriggered = true; // Mark that long press occurred
             }
         }, 500);
     }
@@ -126,19 +133,24 @@ window.addEventListener('pointerup', e => {
     isDragging = false;
     clearTimeout(longPressTimeout);
 
-    if (!hasDragged && e.button !== 2) {
+    // Only process tap if it wasn't a long press and wasn't a drag
+    if (!hasDragged && !longPressTriggered && e.button !== 2) {
         const worldPos = screenToWorld(e.clientX, e.clientY);
         const action = flagMode ? 'flag' : (e.button === 1 ? 'chord' : 'reveal');
         handleInteraction(worldPos.x, worldPos.y, action);
     } else if (hasDragged) {
         saveState();
     }
+    
+    // Reset long press flag
+    longPressTriggered = false;
 });
 
 window.addEventListener('pointercancel', e => {
     activePointers.delete(e.pointerId);
     clearTimeout(longPressTimeout);
     isDragging = false;
+    longPressTriggered = false; // Reset long press flag on cancel
 });
 
 canvas.addEventListener('contextmenu', e => {
@@ -158,7 +170,7 @@ canvas.addEventListener('wheel', e => {
 
 function applyZoom(delta) {
     const oldCellSize = CELL_SIZE;
-    CELL_SIZE = Math.min(Math.max(20, CELL_SIZE + delta), 100);
+    CELL_SIZE = Math.max(5, CELL_SIZE + delta); // Only minimum constraint, remove maximum
 
     // Zoom toward center
     const scale = CELL_SIZE / oldCellSize;
@@ -209,8 +221,10 @@ function draw() {
     ctx.strokeStyle = colors.stroke;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = `bold ${CELL_SIZE * 0.55}px Inter, sans-serif`;
 
+    // Level of Detail (LoD) system
+    const lodLevel = getLoDLevel(CELL_SIZE);
+    
     for (let x = startX; x <= endX; x++) {
         for (let y = startY; y <= endY; y++) {
             const cell = grid.getCell(x, y);
@@ -218,28 +232,51 @@ function draw() {
             const py = canvas.height / 2 - cameraY + y * CELL_SIZE;
 
             if (!cell.isRevealed) {
-                // Draw hidden cell
+                // Draw hidden cell with LoD
                 ctx.fillStyle = (x === hoverX && y === hoverY) ? colors.hiddenHover : colors.hidden;
                 ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
-                ctx.strokeRect(px, py, CELL_SIZE, CELL_SIZE);
+                
+                // Only draw stroke at higher LoD levels
+                if (lodLevel >= 2) {
+                    ctx.strokeRect(px, py, CELL_SIZE, CELL_SIZE);
+                }
 
-                if (cell.isFlagged) {
+                if (cell.isFlagged && lodLevel >= 2) {
                     ctx.fillStyle = colors.flag;
+                    ctx.font = `bold ${CELL_SIZE * 0.55}px Inter, sans-serif`;
                     ctx.fillText('⚑', px + CELL_SIZE / 2, py + CELL_SIZE / 2);
                 }
             } else {
-                // Draw revealed cell
-                ctx.strokeRect(px, py, CELL_SIZE, CELL_SIZE);
-                if (cell.isMine) {
+                // Draw revealed cell with LoD
+                if (lodLevel >= 2) {
+                    ctx.strokeRect(px, py, CELL_SIZE, CELL_SIZE);
+                }
+                
+                if (cell.isMine && lodLevel >= 3) {
                     ctx.fillStyle = colors.mine;
+                    ctx.font = `bold ${CELL_SIZE * 0.55}px Inter, sans-serif`;
                     ctx.fillText('💣', px + CELL_SIZE / 2, py + CELL_SIZE / 2);
-                } else if (cell.adjacentMines > 0) {
+                } else if (cell.adjacentMines > 0 && lodLevel >= 4) {
                     ctx.fillStyle = numberColors[cell.adjacentMines];
+                    ctx.font = `bold ${CELL_SIZE * 0.55}px Inter, sans-serif`;
                     ctx.fillText(cell.adjacentMines.toString(), px + CELL_SIZE / 2, py + CELL_SIZE / 2);
+                } else if (cell.adjacentMines > 0 && lodLevel === 3) {
+                    // At medium zoom, show colored dots instead of numbers
+                    ctx.fillStyle = numberColors[cell.adjacentMines];
+                    ctx.beginPath();
+                    ctx.arc(px + CELL_SIZE / 2, py + CELL_SIZE / 2, CELL_SIZE * 0.1, 0, Math.PI * 2);
+                    ctx.fill();
                 }
             }
         }
     }
+}
+
+function getLoDLevel(cellSize) {
+    if (cellSize < 15) return 1; // Very low detail - only basic colors
+    if (cellSize < 25) return 2; // Low detail - basic colors + strokes
+    if (cellSize < 40) return 3; // Medium detail - colors + strokes + simplified icons
+    return 4; // Full detail - everything
 }
 
 document.getElementById('newGameBtn').addEventListener('click', () => {
@@ -281,10 +318,48 @@ document.getElementById('recenterBtn').addEventListener('click', () => {
     draw();
 });
 
+document.getElementById('addWaypointBtn').addEventListener('click', () => {
+    const name = prompt('Enter waypoint name (optional):');
+    addWaypoint(cameraX, cameraY, name);
+    saveState();
+    updateWaypointUI();
+});
+
+document.getElementById('prevWaypointBtn').addEventListener('click', () => {
+    navigateWaypoints('prev');
+    updateWaypointUI();
+});
+
+document.getElementById('nextWaypointBtn').addEventListener('click', () => {
+    navigateWaypoints('next');
+    updateWaypointUI();
+});
+
+function updateWaypointUI() {
+    const prevBtn = document.getElementById('prevWaypointBtn');
+    const nextBtn = document.getElementById('nextWaypointBtn');
+    
+    // Disable navigation buttons if no waypoints
+    prevBtn.disabled = waypoints.length === 0;
+    nextBtn.disabled = waypoints.length === 0;
+    
+    // Update button titles to show current waypoint info
+    if (waypoints.length > 0) {
+        const current = waypoints[currentWaypointIndex];
+        prevBtn.title = `Previous: ${currentWaypointIndex > 0 ? waypoints[currentWaypointIndex - 1].name : waypoints[waypoints.length - 1].name}`;
+        nextBtn.title = `Next: ${currentWaypointIndex < waypoints.length - 1 ? waypoints[currentWaypointIndex + 1].name : waypoints[0].name}`;
+    } else {
+        prevBtn.title = 'Previous Waypoint (none)';
+        nextBtn.title = 'Next Waypoint (none)';
+    }
+}
+
 function saveState() {
     const state = {
         grid: grid.serialize(),
-        camera: { x: cameraX, y: cameraY }
+        camera: { x: cameraX, y: cameraY },
+        waypoints: waypoints,
+        currentWaypointIndex: currentWaypointIndex
     };
     try {
         localStorage.setItem('minesweeper_save', JSON.stringify(state));
@@ -302,6 +377,8 @@ function loadState() {
             grid.deserialize(state.grid);
             cameraX = state.camera.x;
             cameraY = state.camera.y;
+            waypoints = state.waypoints || [];
+            currentWaypointIndex = state.currentWaypointIndex || -1;
             updateUI();
             if (grid.gameOver) {
                 document.getElementById('game-over').classList.remove('hidden');
@@ -314,6 +391,53 @@ function loadState() {
     return false;
 }
 
+// Waypoint management functions
+function addWaypoint(x, y, name) {
+    const waypoint = {
+        x: x,
+        y: y,
+        name: name || `Waypoint ${waypoints.length + 1}`,
+        timestamp: Date.now()
+    };
+    waypoints.push(waypoint);
+    return waypoint;
+}
+
+function removeWaypoint(index) {
+    if (index >= 0 && index < waypoints.length) {
+        waypoints.splice(index, 1);
+        if (currentWaypointIndex >= index) {
+            currentWaypointIndex--;
+        }
+    }
+}
+
+function goToWaypoint(index) {
+    if (index >= 0 && index < waypoints.length) {
+        const waypoint = waypoints[index];
+        cameraX = waypoint.x;
+        cameraY = waypoint.y;
+        currentWaypointIndex = index;
+        saveState();
+        draw();
+        return true;
+    }
+    return false;
+}
+
+function navigateWaypoints(direction) {
+    if (waypoints.length === 0) return false;
+    
+    if (direction === 'next') {
+        currentWaypointIndex = (currentWaypointIndex + 1) % waypoints.length;
+    } else if (direction === 'prev') {
+        currentWaypointIndex = currentWaypointIndex <= 0 ? waypoints.length - 1 : currentWaypointIndex - 1;
+    }
+    
+    return goToWaypoint(currentWaypointIndex);
+}
+
 // Initialization
 loadState();
 resizeCanvas(); // Calls draw()
+updateWaypointUI();
