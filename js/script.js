@@ -63,6 +63,10 @@ function screenToWorld(sx, sy) {
     };
 }
 
+function isUITarget(target) {
+    return target.closest('#ui-layer') || target.closest('.glass-panel') || target.closest('.modal-backdrop');
+}
+
 canvas.addEventListener('pointerdown', e => {
     isDragging = true;
     hasDragged = false;
@@ -106,7 +110,7 @@ window.addEventListener('pointermove', e => {
         lastPinchDist = dist;
         hasDragged = true;
         clearTimeout(longPressTimeout);
-    } else if (isDragging) {
+    } else if (isDragging && !isUITarget(e.target)) {
         const dx = e.clientX - dragStartX;
         const dy = e.clientY - dragStartY;
         if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
@@ -116,7 +120,7 @@ window.addEventListener('pointermove', e => {
         cameraX = camStartX - dx;
         cameraY = camStartY - dy;
         draw();
-    } else {
+    } else if (!isUITarget(e.target)) {
         const worldPos = screenToWorld(e.clientX, e.clientY);
         if (hoverX !== worldPos.x || hoverY !== worldPos.y) {
             hoverX = worldPos.x;
@@ -132,6 +136,11 @@ window.addEventListener('pointerup', e => {
 
     isDragging = false;
     clearTimeout(longPressTimeout);
+
+    // Check if click originated from UI elements
+    if (isUITarget(e.target)) {
+        return; // Don't process game interactions for UI clicks
+    }
 
     // Only process tap if it wasn't a long press and wasn't a drag
     if (!hasDragged && !longPressTriggered && e.button !== 2) {
@@ -159,6 +168,12 @@ canvas.addEventListener('contextmenu', e => {
         const worldPos = screenToWorld(e.clientX, e.clientY);
         handleInteraction(worldPos.x, worldPos.y, 'flag');
     }
+});
+
+// Prevent UI layer context menu from triggering canvas interactions
+document.getElementById('ui-layer').addEventListener('contextmenu', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
 });
 
 // For touch devices (long press to flag could be added, but right click works for now)
@@ -279,7 +294,8 @@ function getLoDLevel(cellSize) {
     return 4; // Full detail - everything
 }
 
-document.getElementById('newGameBtn').addEventListener('click', () => {
+document.getElementById('newGameBtn').addEventListener('click', (e) => {
+    e.stopPropagation(); // Prevent click from reaching canvas
     grid = new InfiniteGrid();
     cameraX = 0;
     cameraY = 0;
@@ -289,7 +305,8 @@ document.getElementById('newGameBtn').addEventListener('click', () => {
     draw();
 });
 
-document.getElementById('suicideBtn').addEventListener('click', () => {
+document.getElementById('suicideBtn').addEventListener('click', (e) => {
+    e.stopPropagation(); // Prevent click from reaching canvas
     grid.lives = 0;
     grid.gameOver = true;
     document.getElementById('game-over').classList.remove('hidden');
@@ -298,60 +315,101 @@ document.getElementById('suicideBtn').addEventListener('click', () => {
     draw();
 });
 
-document.getElementById('flagBtn').addEventListener('click', () => {
+document.getElementById('flagBtn').addEventListener('click', (e) => {
+    e.stopPropagation(); // Prevent click from reaching canvas
     flagMode = !flagMode;
     document.getElementById('flagBtn').classList.toggle('active', flagMode);
 });
 
-document.getElementById('zoomInBtn').addEventListener('click', () => {
+document.getElementById('zoomInBtn').addEventListener('click', (e) => {
+    e.stopPropagation(); // Prevent click from reaching canvas
     applyZoom(10);
 });
 
-document.getElementById('zoomOutBtn').addEventListener('click', () => {
+document.getElementById('zoomOutBtn').addEventListener('click', (e) => {
+    e.stopPropagation(); // Prevent click from reaching canvas
     applyZoom(-10);
 });
 
-document.getElementById('recenterBtn').addEventListener('click', () => {
+document.getElementById('recenterBtn').addEventListener('click', (e) => {
+    e.stopPropagation(); // Prevent click from reaching canvas
     cameraX = 0;
     cameraY = 0;
     saveState();
     draw();
 });
 
-document.getElementById('addWaypointBtn').addEventListener('click', () => {
+// Waypoint modal system
+document.getElementById('waypointsBtn').addEventListener('click', (e) => {
+    e.stopPropagation(); // Prevent click from reaching canvas
+    openWaypointsModal();
+});
+
+document.getElementById('closeWaypointsBtn').addEventListener('click', (e) => {
+    e.stopPropagation(); // Prevent click from reaching canvas
+    closeWaypointsModal();
+});
+
+document.getElementById('addWaypointBtn').addEventListener('click', (e) => {
+    e.stopPropagation(); // Prevent click from reaching canvas
     const name = prompt('Enter waypoint name (optional):');
-    addWaypoint(cameraX, cameraY, name);
-    saveState();
-    updateWaypointUI();
-});
-
-document.getElementById('prevWaypointBtn').addEventListener('click', () => {
-    navigateWaypoints('prev');
-    updateWaypointUI();
-});
-
-document.getElementById('nextWaypointBtn').addEventListener('click', () => {
-    navigateWaypoints('next');
-    updateWaypointUI();
-});
-
-function updateWaypointUI() {
-    const prevBtn = document.getElementById('prevWaypointBtn');
-    const nextBtn = document.getElementById('nextWaypointBtn');
-    
-    // Disable navigation buttons if no waypoints
-    prevBtn.disabled = waypoints.length === 0;
-    nextBtn.disabled = waypoints.length === 0;
-    
-    // Update button titles to show current waypoint info
-    if (waypoints.length > 0) {
-        const current = waypoints[currentWaypointIndex];
-        prevBtn.title = `Previous: ${currentWaypointIndex > 0 ? waypoints[currentWaypointIndex - 1].name : waypoints[waypoints.length - 1].name}`;
-        nextBtn.title = `Next: ${currentWaypointIndex < waypoints.length - 1 ? waypoints[currentWaypointIndex + 1].name : waypoints[0].name}`;
-    } else {
-        prevBtn.title = 'Previous Waypoint (none)';
-        nextBtn.title = 'Next Waypoint (none)';
+    if (name !== null) {
+        addWaypoint(cameraX, cameraY, name);
+        saveState();
+        updateWaypointsList();
     }
+});
+
+function openWaypointsModal() {
+    document.getElementById('waypointsBackdrop').classList.remove('hidden');
+    document.getElementById('waypointsModal').classList.remove('hidden');
+    updateWaypointsList();
+}
+
+function closeWaypointsModal() {
+    document.getElementById('waypointsBackdrop').classList.add('hidden');
+    document.getElementById('waypointsModal').classList.add('hidden');
+}
+
+// Close modal when clicking backdrop
+document.getElementById('waypointsBackdrop').addEventListener('click', () => {
+    closeWaypointsModal();
+});
+
+// Close modal when clicking outside the modal content
+document.getElementById('waypointsModal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) {
+        closeWaypointsModal();
+    }
+});
+
+// Close modal with Escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        closeWaypointsModal();
+    }
+});
+
+function updateWaypointsList() {
+    const list = document.getElementById('waypointsList');
+    
+    if (waypoints.length === 0) {
+        list.innerHTML = '<div class="empty-waypoints">No waypoints yet. Add your current position to get started!</div>';
+        return;
+    }
+    
+    list.innerHTML = waypoints.map((waypoint, index) => `
+        <div class="waypoint-item ${index === currentWaypointIndex ? 'current' : ''}">
+            <div class="waypoint-info">
+                <div class="waypoint-name">${waypoint.name}</div>
+                <div class="waypoint-coords">X: ${Math.round(waypoint.x)}, Y: ${Math.round(waypoint.y)}</div>
+            </div>
+            <div class="waypoint-actions">
+                <button onclick="event.stopPropagation(); goToWaypoint(${index})">Go To</button>
+                <button class="delete" onclick="event.stopPropagation(); removeWaypoint(${index}); updateWaypointsList();">Delete</button>
+            </div>
+        </div>
+    `).join('');
 }
 
 function saveState() {
@@ -437,7 +495,11 @@ function navigateWaypoints(direction) {
     return goToWaypoint(currentWaypointIndex);
 }
 
+// Prevent UI layer clicks from reaching canvas
+document.getElementById('ui-layer').addEventListener('click', (e) => {
+    e.stopPropagation();
+});
+
 // Initialization
 loadState();
 resizeCanvas(); // Calls draw()
-updateWaypointUI();

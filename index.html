@@ -63,23 +63,11 @@
                         <path d="M12 19v2"></path>
                     </svg>
                 </button>
-                <button id="addWaypointBtn" title="Add Waypoint">
+                <button id="waypointsBtn" title="Waypoints">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                         stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
                         <circle cx="12" cy="10" r="3"></circle>
-                    </svg>
-                </button>
-                <button id="prevWaypointBtn" title="Previous Waypoint">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="15 18 9 12 15 6"></polyline>
-                    </svg>
-                </button>
-                <button id="nextWaypointBtn" title="Next Waypoint">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="9 18 15 12 9 6"></polyline>
                     </svg>
                 </button>
                 <button id="suicideBtn" title="Suicide">
@@ -97,6 +85,22 @@
                 <h2 id="game-over-title">Game Over!</h2>
                 <p>You hit a mine.</p>
                 <button id="newGameBtn" class="primary-btn">Start New Game</button>
+            </div>
+            
+            <div id="waypointsBackdrop" class="hidden modal-backdrop"></div>
+            <div id="waypointsModal" class="hidden glass-panel">
+                <div class="modal-header">
+                    <h2>Waypoints</h2>
+                    <button id="closeWaypointsBtn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-content">
+                    <div class="waypoint-controls">
+                        <button id="addWaypointBtn" class="primary-btn">Add Current Position</button>
+                    </div>
+                    <div id="waypointsList" class="waypoints-list">
+                        <!-- Waypoints will be dynamically added here -->
+                    </div>
+                </div>
             </div>
         </div>
         <div id="commit-hash">
