@@ -82,7 +82,6 @@ const urlsToCache = [
     './js/v.js',
     './manifest.json',
     './icon.svg',
-    './hash.txt',
     'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap'
 ];
 
@@ -122,12 +121,12 @@ self.addEventListener('fetch', event => {
                     currentVersion = await getCurrentVersion();
                 }
 
-                // Handle version checking for hash.txt
+                // Handle version checking for hash.txt - always fetch from network
                 if (event.request.url.includes('hash.txt')) {
                     try {
-                        const response = await fetch(event.request);
+                        const response = await fetch(event.request, { cache: 'no-store' });
                         if (!response.ok) throw new Error('Network response was not ok');
-                        
+
                         const newHash = await response.text();
                         if (validateHash(newHash.trim())) {
                             // Check if version changed, but don't trigger immediate update
@@ -140,16 +139,14 @@ self.addEventListener('fetch', event => {
                                 headers: { 'Content-Type': 'text/plain' }
                             });
                         } else {
-                            // Invalid hash, return cached version or fallback
-                            const cachedResponse = await caches.match(event.request);
-                            return cachedResponse || new Response('development', {
+                            // Invalid hash, return fallback
+                            return new Response('development', {
                                 headers: { 'Content-Type': 'text/plain' }
                             });
                         }
                     } catch (error) {
                         console.warn('Failed to fetch hash.txt:', error);
-                        const cachedResponse = await caches.match(event.request);
-                        return cachedResponse || new Response('development', {
+                        return new Response('development', {
                             headers: { 'Content-Type': 'text/plain' }
                         });
                     }

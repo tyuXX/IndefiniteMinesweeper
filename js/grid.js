@@ -1,3 +1,11 @@
+// Grid configuration constants
+const GRID_CONFIG = {
+    CLEANUP_THRESHOLD: 5000,
+    CLEANUP_INTERVAL: 2000,
+    VIEWPORT_BUFFER: 50,
+    LIVES_BASE_MULTIPLIER: 100
+};
+
 // A linear congruential generator for deterministic pseudo-random numbers
 class PRNG {
     constructor(seed) {
@@ -32,6 +40,9 @@ class InfiniteGrid {
         this.safeZoneMinY = 0;
         this.safeZoneMaxY = 0;
         this.hasFirstClick = false;
+
+        // Memory management
+        this.lastCleanup = 0;
     }
 
     getKey(x, y) {
@@ -132,7 +143,7 @@ class InfiniteGrid {
 
             currCell.isRevealed = true;
             this.exploredCount++;
-            if (this.exploredCount > Math.floor(100 * this.totalLives * (Math.log10(this.totalLives) + 1))) {
+            if (this.exploredCount > Math.floor(GRID_CONFIG.LIVES_BASE_MULTIPLIER * this.totalLives * (Math.log10(this.totalLives) + 1))) {
                 this.totalLives++;
                 this.lives++;
             }
@@ -151,6 +162,13 @@ class InfiniteGrid {
                 }
             }
         }
+
+        // Periodic cleanup to prevent memory issues
+        if (this.cells.size > GRID_CONFIG.CLEANUP_THRESHOLD && this.exploredCount - this.lastCleanup > GRID_CONFIG.CLEANUP_INTERVAL) {
+            this.cleanupCells(x, y);
+            this.lastCleanup = this.exploredCount;
+        }
+
         return true;
     }
 
@@ -259,6 +277,45 @@ class InfiniteGrid {
             const [x, y] = key.split(',').map(Number);
             const cell = this.getCell(x, y);
             cell.isFlagged = true;
+        }
+    }
+
+    cleanupCells(centerX, centerY) {
+        // If no center provided, calculate from revealed cells
+        if (centerX === undefined || centerY === undefined) {
+            let sumX = 0, sumY = 0, count = 0;
+            for (const [key, cell] of this.cells) {
+                if (cell.isRevealed) {
+                    const [x, y] = key.split(',').map(Number);
+                    sumX += x;
+                    sumY += y;
+                    count++;
+                }
+            }
+
+            if (count === 0) return;
+
+            centerX = Math.floor(sumX / count);
+            centerY = Math.floor(sumY / count);
+        }
+
+        const keysToDelete = [];
+        const deleteRadius = GRID_CONFIG.VIEWPORT_BUFFER * 3;
+
+        for (const [key, cell] of this.cells) {
+            // Keep important cells
+            if (cell.isRevealed || cell.isFlagged) continue;
+
+            const [x, y] = key.split(',').map(Number);
+            const distance = Math.max(Math.abs(x - centerX), Math.abs(y - centerY));
+
+            if (distance > deleteRadius) {
+                keysToDelete.push(key);
+            }
+        }
+
+        for (const key of keysToDelete) {
+            this.cells.delete(key);
         }
     }
 }

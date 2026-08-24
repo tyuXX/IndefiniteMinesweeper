@@ -1,10 +1,34 @@
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
+const CONFIG = {
+    CELL_SIZE: 40,
+    MIN_CELL_SIZE: 5,
+    LONG_PRESS_DURATION: 500,
+    DRAG_THRESHOLD: 5,
+    PINCH_ZOOM_SENSITIVITY: 0.5,
+    WHEEL_ZOOM_SENSITIVITY: 0.01,
+    WHEEL_ZOOM_MULTIPLIER: 5,
+    ZOOM_BUTTON_DELTA: 10,
+    SAVE_DEBOUNCE_TIME: 1000,
+    LOD_LEVEL_0_THRESHOLD: 8,
+    LOD_LEVEL_1_THRESHOLD: 15,
+    LOD_LEVEL_2_THRESHOLD: 25,
+    LOD_LEVEL_3_THRESHOLD: 40
+};
+
 let grid = new InfiniteGrid();
-let CELL_SIZE = 40;
+let CELL_SIZE = CONFIG.CELL_SIZE;
 let cameraX = 0;
 let cameraY = 0;
+
+// Rendering optimization
+let animationFrameId = null;
+let needsRedraw = false;
+
+// Debounced save state
+let saveTimeout = null;
+let savePending = false;
 
 // Waypoint system
 let waypoints = [];
@@ -36,9 +60,26 @@ const numberColors = [
 function resizeCanvas() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    draw();
+    requestDraw();
 }
 window.addEventListener('resize', resizeCanvas);
+
+function requestDraw() {
+    if (!needsRedraw) {
+        needsRedraw = true;
+        if (!animationFrameId) {
+            animationFrameId = requestAnimationFrame(renderLoop);
+        }
+    }
+}
+
+function renderLoop() {
+    if (needsRedraw) {
+        draw();
+        needsRedraw = false;
+    }
+    animationFrameId = null;
+}
 
 // Input handling
 let isDragging = false;
@@ -87,7 +128,7 @@ canvas.addEventListener('pointerdown', e => {
                 isDragging = false; // Prevent drag after long press
                 longPressTriggered = true; // Mark that long press occurred
             }
-        }, 500);
+        }, CONFIG.LONG_PRESS_DURATION);
     }
 
     if (e.button === 1) e.preventDefault(); // middle click panning
@@ -104,7 +145,7 @@ window.addEventListener('pointermove', e => {
         const dist = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
 
         if (lastPinchDist) {
-            const zoomDelta = (dist - lastPinchDist) * 0.5;
+            const zoomDelta = (dist - lastPinchDist) * CONFIG.PINCH_ZOOM_SENSITIVITY;
             applyZoom(zoomDelta);
         }
         lastPinchDist = dist;
@@ -113,19 +154,19 @@ window.addEventListener('pointermove', e => {
     } else if (isDragging && !isUITarget(e.target)) {
         const dx = e.clientX - dragStartX;
         const dy = e.clientY - dragStartY;
-        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+        if (Math.abs(dx) > CONFIG.DRAG_THRESHOLD || Math.abs(dy) > CONFIG.DRAG_THRESHOLD) {
             hasDragged = true;
             clearTimeout(longPressTimeout);
         }
         cameraX = camStartX - dx;
         cameraY = camStartY - dy;
-        draw();
+        requestDraw();
     } else if (!isUITarget(e.target)) {
         const worldPos = screenToWorld(e.clientX, e.clientY);
         if (hoverX !== worldPos.x || hoverY !== worldPos.y) {
             hoverX = worldPos.x;
             hoverY = worldPos.y;
-            draw();
+            requestDraw();
         }
     }
 });
@@ -179,22 +220,20 @@ document.getElementById('ui-layer').addEventListener('contextmenu', (e) => {
 // For touch devices (long press to flag could be added, but right click works for now)
 canvas.addEventListener('wheel', e => {
     e.preventDefault();
-    const zoomFactor = -e.deltaY * 0.01;
-    applyZoom(zoomFactor * 5);
+    const zoomFactor = -e.deltaY * CONFIG.WHEEL_ZOOM_SENSITIVITY;
+    applyZoom(zoomFactor * CONFIG.WHEEL_ZOOM_MULTIPLIER);
 }, { passive: false });
 
 function applyZoom(delta) {
     const oldCellSize = CELL_SIZE;
-    CELL_SIZE = Math.max(5, CELL_SIZE + delta); // Only minimum constraint, remove maximum
+    CELL_SIZE = Math.max(CONFIG.MIN_CELL_SIZE, CELL_SIZE + delta);
 
-    // Zoom toward center
     const scale = CELL_SIZE / oldCellSize;
     cameraX *= scale;
     cameraY *= scale;
 
-    draw();
-    clearTimeout(window.zoomSaveTimeout);
-    window.zoomSaveTimeout = setTimeout(saveState, 500);
+    requestDraw();
+    saveState();
 }
 
 function handleInteraction(x, y, action) {
@@ -209,7 +248,7 @@ function handleInteraction(x, y, action) {
     }
 
     updateUI();
-    draw();
+    requestDraw();
 
     if (grid.gameOver) {
         document.getElementById('game-over').classList.remove('hidden');
@@ -239,7 +278,23 @@ function draw() {
 
     // Level of Detail (LoD) system
     const lodLevel = getLoDLevel(CELL_SIZE);
-    
+
+    // Skip rendering entirely at extreme zoom levels
+    if (lodLevel === 0) {
+        // Draw simplified blocks
+        for (let x = startX; x <= endX; x++) {
+            for (let y = startY; y <= endY; y++) {
+                const cell = grid.getCell(x, y);
+                const px = canvas.width / 2 - cameraX + x * CELL_SIZE;
+                const py = canvas.height / 2 - cameraY + y * CELL_SIZE;
+
+                ctx.fillStyle = cell.isRevealed ? colors.revealed : colors.hidden;
+                ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+            }
+        }
+        return;
+    }
+
     for (let x = startX; x <= endX; x++) {
         for (let y = startY; y <= endY; y++) {
             const cell = grid.getCell(x, y);
@@ -250,7 +305,7 @@ function draw() {
                 // Draw hidden cell with LoD
                 ctx.fillStyle = (x === hoverX && y === hoverY) ? colors.hiddenHover : colors.hidden;
                 ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
-                
+
                 // Only draw stroke at higher LoD levels
                 if (lodLevel >= 2) {
                     ctx.strokeRect(px, py, CELL_SIZE, CELL_SIZE);
@@ -266,7 +321,7 @@ function draw() {
                 if (lodLevel >= 2) {
                     ctx.strokeRect(px, py, CELL_SIZE, CELL_SIZE);
                 }
-                
+
                 if (cell.isMine && lodLevel >= 3) {
                     ctx.fillStyle = colors.mine;
                     ctx.font = `bold ${CELL_SIZE * 0.55}px Inter, sans-serif`;
@@ -288,9 +343,10 @@ function draw() {
 }
 
 function getLoDLevel(cellSize) {
-    if (cellSize < 15) return 1; // Very low detail - only basic colors
-    if (cellSize < 25) return 2; // Low detail - basic colors + strokes
-    if (cellSize < 40) return 3; // Medium detail - colors + strokes + simplified icons
+    if (cellSize < CONFIG.LOD_LEVEL_0_THRESHOLD) return 0; // Aggressive culling - solid blocks only
+    if (cellSize < CONFIG.LOD_LEVEL_1_THRESHOLD) return 1; // Very low detail - only basic colors
+    if (cellSize < CONFIG.LOD_LEVEL_2_THRESHOLD) return 2; // Low detail - basic colors + strokes
+    if (cellSize < CONFIG.LOD_LEVEL_3_THRESHOLD) return 3; // Medium detail - colors + strokes + simplified icons
     return 4; // Full detail - everything
 }
 
@@ -302,7 +358,7 @@ document.getElementById('newGameBtn').addEventListener('click', (e) => {
     updateUI();
     document.getElementById('game-over').classList.add('hidden');
     saveState();
-    draw();
+    requestDraw();
 });
 
 document.getElementById('suicideBtn').addEventListener('click', (e) => {
@@ -312,7 +368,7 @@ document.getElementById('suicideBtn').addEventListener('click', (e) => {
     document.getElementById('game-over').classList.remove('hidden');
     updateUI();
     saveState();
-    draw();
+    requestDraw();
 });
 
 document.getElementById('flagBtn').addEventListener('click', (e) => {
@@ -323,12 +379,12 @@ document.getElementById('flagBtn').addEventListener('click', (e) => {
 
 document.getElementById('zoomInBtn').addEventListener('click', (e) => {
     e.stopPropagation(); // Prevent click from reaching canvas
-    applyZoom(10);
+    applyZoom(CONFIG.ZOOM_BUTTON_DELTA);
 });
 
 document.getElementById('zoomOutBtn').addEventListener('click', (e) => {
     e.stopPropagation(); // Prevent click from reaching canvas
-    applyZoom(-10);
+    applyZoom(-CONFIG.ZOOM_BUTTON_DELTA);
 });
 
 document.getElementById('recenterBtn').addEventListener('click', (e) => {
@@ -336,7 +392,7 @@ document.getElementById('recenterBtn').addEventListener('click', (e) => {
     cameraX = 0;
     cameraY = 0;
     saveState();
-    draw();
+    requestDraw();
 });
 
 // Waypoint modal system
@@ -413,6 +469,11 @@ function updateWaypointsList() {
 }
 
 function saveState() {
+    if (saveTimeout) {
+        savePending = true;
+        return;
+    }
+
     const state = {
         grid: grid.serialize(),
         camera: { x: cameraX, y: cameraY },
@@ -422,8 +483,26 @@ function saveState() {
     try {
         localStorage.setItem('minesweeper_save', JSON.stringify(state));
     } catch (e) {
-        console.error("Failed to save game state", e);
+        if (e.name === 'QuotaExceededError') {
+            console.warn("LocalStorage quota exceeded, clearing old saves");
+            try {
+                localStorage.removeItem('minesweeper_save');
+                localStorage.setItem('minesweeper_save', JSON.stringify(state));
+            } catch (retryError) {
+                console.error("Failed to save game state even after cleanup:", retryError);
+            }
+        } else {
+            console.error("Failed to save game state:", e);
+        }
     }
+
+    saveTimeout = setTimeout(() => {
+        saveTimeout = null;
+        if (savePending) {
+            savePending = false;
+            saveState();
+        }
+    }, CONFIG.SAVE_DEBOUNCE_TIME);
 }
 
 function loadState() {
@@ -431,6 +510,10 @@ function loadState() {
         const saved = localStorage.getItem('minesweeper_save');
         if (saved) {
             const state = JSON.parse(saved);
+            if (!state || !state.grid || !state.camera) {
+                console.warn("Invalid save state format");
+                return false;
+            }
             grid = new InfiniteGrid();
             grid.deserialize(state.grid);
             cameraX = state.camera.x;
@@ -444,7 +527,11 @@ function loadState() {
             return true;
         }
     } catch (e) {
-        console.error("Failed to load game state", e);
+        if (e instanceof SyntaxError) {
+            console.error("Failed to parse save state (corrupted data):", e);
+        } else {
+            console.error("Failed to load game state:", e);
+        }
     }
     return false;
 }
@@ -477,7 +564,7 @@ function goToWaypoint(index) {
         cameraY = waypoint.y;
         currentWaypointIndex = index;
         saveState();
-        draw();
+        requestDraw();
         return true;
     }
     return false;
@@ -502,4 +589,4 @@ document.getElementById('ui-layer').addEventListener('click', (e) => {
 
 // Initialization
 loadState();
-resizeCanvas(); // Calls draw()
+resizeCanvas(); // Calls requestDraw()
