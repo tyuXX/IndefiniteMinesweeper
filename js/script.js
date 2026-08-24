@@ -94,6 +94,8 @@ let flagMode = false;
 let longPressTimeout = null;
 let lastPinchDist = null;
 let longPressTriggered = false;
+let longPressX = null;
+let longPressY = null;
 
 function screenToWorld(sx, sy) {
     const cx = sx - canvas.width / 2;
@@ -123,6 +125,8 @@ canvas.addEventListener('pointerdown', e => {
         longPressTimeout = setTimeout(() => {
             if (!hasDragged) {
                 const worldPos = screenToWorld(e.clientX, e.clientY);
+                longPressX = worldPos.x;
+                longPressY = worldPos.y;
                 handleInteraction(worldPos.x, worldPos.y, 'flag');
                 navigator.vibrate?.(50); // Haptic feedback
                 isDragging = false; // Prevent drag after long press
@@ -180,20 +184,32 @@ window.addEventListener('pointerup', e => {
 
     // Check if click originated from UI elements
     if (isUITarget(e.target)) {
+        longPressTriggered = false;
+        longPressX = null;
+        longPressY = null;
         return; // Don't process game interactions for UI clicks
     }
 
     // Only process tap if it wasn't a long press and wasn't a drag
     if (!hasDragged && !longPressTriggered && e.button !== 2) {
         const worldPos = screenToWorld(e.clientX, e.clientY);
+        // Prevent double-toggling if this is the same cell as long press
+        if (longPressX !== null && longPressY !== null && worldPos.x === longPressX && worldPos.y === longPressY) {
+            longPressTriggered = false;
+            longPressX = null;
+            longPressY = null;
+            return;
+        }
         const action = flagMode ? 'flag' : (e.button === 1 ? 'chord' : 'reveal');
         handleInteraction(worldPos.x, worldPos.y, action);
     } else if (hasDragged) {
         saveState();
     }
-    
-    // Reset long press flag
+
+    // Reset long press flag after processing
     longPressTriggered = false;
+    longPressX = null;
+    longPressY = null;
 });
 
 window.addEventListener('pointercancel', e => {
