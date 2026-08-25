@@ -96,6 +96,7 @@ let lastPinchDist = null;
 let longPressTriggered = false;
 let longPressX = null;
 let longPressY = null;
+let lastPointerType = 'mouse';
 
 function screenToWorld(sx, sy) {
     const cx = sx - canvas.width / 2;
@@ -111,6 +112,7 @@ function isUITarget(target) {
 }
 
 canvas.addEventListener('pointerdown', e => {
+    lastPointerType = e.pointerType;
     isDragging = true;
     hasDragged = false;
     longPressTriggered = false; // Reset long press flag
@@ -221,6 +223,9 @@ window.addEventListener('pointercancel', e => {
 
 canvas.addEventListener('contextmenu', e => {
     e.preventDefault();
+    // Touch long press is handled by the long press timer; the browser also
+    // fires contextmenu for it, which would toggle the flag right back off.
+    if (lastPointerType === 'touch') return;
     if (!hasDragged) {
         const worldPos = screenToWorld(e.clientX, e.clientY);
         handleInteraction(worldPos.x, worldPos.y, 'flag');
