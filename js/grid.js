@@ -3,7 +3,8 @@ const GRID_CONFIG = {
     CLEANUP_THRESHOLD: 5000,
     CLEANUP_INTERVAL: 2000,
     VIEWPORT_BUFFER: 50,
-    LIVES_BASE_MULTIPLIER: 100
+    LIVES_BASE_MULTIPLIER: 100,
+    CHUNK_SIZE: 10
 };
 
 // A linear congruential generator for deterministic pseudo-random numbers
@@ -28,10 +29,13 @@ class InfiniteGrid {
         // key is "x,y", value is state object { isMine, isRevealed, isFlagged, adjacentMines }
         this.cells = new Map();
 
+        // key is "chunkX,chunkY", value is completion data
+        this.completedChunks = new Set();
+
         this.exploredCount = 0;
         this.flaggedCount = 0;
-        this.totalLives = 3;
         this.lives = 3;
+        this.level = 1;
         this.gameOver = false;
 
         // Ensure the first click and its neighbors are safe
@@ -49,11 +53,90 @@ class InfiniteGrid {
         return `${x},${y}`;
     }
 
+    getChunkKey(x, y) {
+        const chunkX = Math.floor(x / GRID_CONFIG.CHUNK_SIZE);
+        const chunkY = Math.floor(y / GRID_CONFIG.CHUNK_SIZE);
+        return `${chunkX},${chunkY}`;
+    }
+
+    getChunkFromCell(x, y) {
+        return {
+            x: Math.floor(x / GRID_CONFIG.CHUNK_SIZE),
+            y: Math.floor(y / GRID_CONFIG.CHUNK_SIZE)
+        };
+    }
+
+    getChunkBounds(chunkX, chunkY) {
+        return {
+            minX: chunkX * GRID_CONFIG.CHUNK_SIZE,
+            maxX: (chunkX + 1) * GRID_CONFIG.CHUNK_SIZE - 1,
+            minY: chunkY * GRID_CONFIG.CHUNK_SIZE,
+            maxY: (chunkY + 1) * GRID_CONFIG.CHUNK_SIZE - 1
+        };
+    }
+
+    isChunkCompleted(chunkX, chunkY) {
+        const chunkKey = `${chunkX},${chunkY}`;
+        if (this.completedChunks.has(chunkKey)) {
+            return true;
+        }
+
+        const bounds = this.getChunkBounds(chunkX, chunkY);
+        
+        for (let x = bounds.minX; x <= bounds.maxX; x++) {
+            for (let y = bounds.minY; y <= bounds.maxY; y++) {
+                const cell = this.getCell(x, y);
+                // Chunk is completed when all non-mine cells are revealed
+                if (!cell.isMine && !cell.isRevealed) {
+                    return false;
+                }
+            }
+        }
+        
+        return true;
+    }
+
+    completeChunk(chunkX, chunkY) {
+        const chunkKey = `${chunkX},${chunkY}`;
+        if (this.completedChunks.has(chunkKey)) {
+            return; // Already completed
+        }
+
+        const bounds = this.getChunkBounds(chunkX, chunkY);
+        
+        // Remove all individual cells from storage for this chunk
+        for (let x = bounds.minX; x <= bounds.maxX; x++) {
+            for (let y = bounds.minY; y <= bounds.maxY; y++) {
+                const key = this.getKey(x, y);
+                this.cells.delete(key);
+            }
+        }
+
+        // Mark chunk as completed
+        this.completedChunks.add(chunkKey);
+    }
+
+    isCellInCompletedChunk(x, y) {
+        const chunk = this.getChunkFromCell(x, y);
+        return this.completedChunks.has(`${chunk.x},${chunk.y}`);
+    }
+
     // Generates or retrieves a cell
     getCell(x, y) {
         const key = this.getKey(x, y);
         if (this.cells.has(key)) {
             return this.cells.get(key);
+        }
+
+        // Check if this cell is in a completed chunk
+        if (this.isCellInCompletedChunk(x, y)) {
+            // Return a dummy revealed cell for completed chunks
+            return {
+                isMine: false,
+                isRevealed: true,
+                isFlagged: false,
+                adjacentMines: 0
+            };
         }
 
         // Determine if it's a mine using coordinates and seed
@@ -134,6 +217,7 @@ class InfiniteGrid {
 
         // Iterative flood fill to prevent stack overflow
         const stack = [[x, y]];
+        const affectedChunks = new Set();
 
         while (stack.length > 0) {
             const [cx, cy] = stack.pop();
@@ -143,10 +227,15 @@ class InfiniteGrid {
 
             currCell.isRevealed = true;
             this.exploredCount++;
-            if (this.exploredCount > Math.floor(GRID_CONFIG.LIVES_BASE_MULTIPLIER * this.totalLives * (Math.log10(this.totalLives) + 1))) {
-                this.totalLives++;
+            const requiredForNextLevel = Math.floor(GRID_CONFIG.LIVES_BASE_MULTIPLIER * this.level * (Math.log10(this.level) + 1));
+            if (this.exploredCount > requiredForNextLevel) {
+                this.level++;
                 this.lives++;
             }
+
+            // Track chunks that might be completed
+            const chunk = this.getChunkFromCell(cx, cy);
+            affectedChunks.add(`${chunk.x},${chunk.y}`);
 
             if (currCell.adjacentMines === -1) {
                 currCell.adjacentMines = this.calculateAdjacent(cx, cy);
@@ -160,6 +249,14 @@ class InfiniteGrid {
                         }
                     }
                 }
+            }
+        }
+
+        // Check and complete any chunks that are now finished
+        for (const chunkKey of affectedChunks) {
+            const [cx, cy] = chunkKey.split(',').map(Number);
+            if (this.isChunkCompleted(cx, cy)) {
+                this.completeChunk(cx, cy);
             }
         }
 
@@ -230,13 +327,15 @@ class InfiniteGrid {
             }
         }
 
+        const completedChunks = Array.from(this.completedChunks);
+
         return {
             seed: this.seed,
             difficulty: this.difficulty,
             exploredCount: this.exploredCount,
             flaggedCount: this.flaggedCount,
-            totalLives: this.totalLives,
             lives: this.lives,
+            level: this.level,
             gameOver: this.gameOver,
             safeZoneMinX: this.safeZoneMinX,
             safeZoneMaxX: this.safeZoneMaxX,
@@ -244,7 +343,8 @@ class InfiniteGrid {
             safeZoneMaxY: this.safeZoneMaxY,
             hasFirstClick: this.hasFirstClick,
             revealed: revealed,
-            flagged: flagged
+            flagged: flagged,
+            completedChunks: completedChunks
         };
     }
 
@@ -253,8 +353,8 @@ class InfiniteGrid {
         this.difficulty = data.difficulty;
         this.exploredCount = data.exploredCount;
         this.flaggedCount = data.flaggedCount;
-        this.totalLives = data.totalLives;
         this.lives = data.lives;
+        this.level = data.level || 1; // Default to level 1 for old saves
         this.gameOver = data.gameOver;
         this.safeZoneMinX = data.safeZoneMinX;
         this.safeZoneMaxX = data.safeZoneMaxX;
@@ -263,6 +363,14 @@ class InfiniteGrid {
         this.hasFirstClick = data.hasFirstClick;
 
         this.cells.clear();
+        this.completedChunks.clear();
+
+        // Load completed chunks if available
+        if (data.completedChunks && Array.isArray(data.completedChunks)) {
+            for (const chunkKey of data.completedChunks) {
+                this.completedChunks.add(chunkKey);
+            }
+        }
 
         for (const key of data.revealed) {
             const [x, y] = key.split(',').map(Number);
@@ -278,6 +386,22 @@ class InfiniteGrid {
             const cell = this.getCell(x, y);
             cell.isFlagged = true;
         }
+    }
+
+    getLevelProgress() {
+        const prevLevel = Math.max(1, this.level - 1);
+        const currentLevelRequired = this.level === 1 ? 0 : Math.floor(GRID_CONFIG.LIVES_BASE_MULTIPLIER * prevLevel * (Math.log10(prevLevel) + 1));
+        const nextLevelRequired = Math.floor(GRID_CONFIG.LIVES_BASE_MULTIPLIER * this.level * (Math.log10(this.level) + 1));
+        const progressInRange = nextLevelRequired - currentLevelRequired;
+        const currentProgress = this.exploredCount - currentLevelRequired;
+        const percentage = Math.min(100, Math.max(0, (currentProgress / progressInRange) * 100));
+        
+        return {
+            percentage: percentage,
+            currentExplored: this.exploredCount,
+            requiredForNextLevel: nextLevelRequired,
+            requiredForCurrentLevel: currentLevelRequired
+        };
     }
 
     cleanupCells(centerX, centerY) {

@@ -281,6 +281,10 @@ function updateUI() {
     document.getElementById('mines').innerText = grid.flaggedCount;
     document.getElementById('explored').innerText = grid.exploredCount;
     document.getElementById('lives').innerText = grid.lives;
+    document.getElementById('level').innerText = grid.level;
+    
+    const progress = grid.getLevelProgress();
+    document.getElementById('level-progress').style.width = progress.percentage + '%';
 }
 
 function draw() {
@@ -305,12 +309,18 @@ function draw() {
         // Draw simplified blocks
         for (let x = startX; x <= endX; x++) {
             for (let y = startY; y <= endY; y++) {
-                const cell = grid.getCell(x, y);
                 const px = canvas.width / 2 - cameraX + x * CELL_SIZE;
                 const py = canvas.height / 2 - cameraY + y * CELL_SIZE;
 
-                ctx.fillStyle = cell.isRevealed ? colors.revealed : colors.hidden;
-                ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+                // Check if cell is in a completed chunk before calling getCell
+                if (grid.isCellInCompletedChunk(x, y)) {
+                    ctx.fillStyle = colors.revealed;
+                    ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+                } else {
+                    const cell = grid.getCell(x, y);
+                    ctx.fillStyle = cell.isRevealed ? colors.revealed : colors.hidden;
+                    ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+                }
             }
         }
         return;
@@ -318,9 +328,22 @@ function draw() {
 
     for (let x = startX; x <= endX; x++) {
         for (let y = startY; y <= endY; y++) {
-            const cell = grid.getCell(x, y);
             const px = canvas.width / 2 - cameraX + x * CELL_SIZE;
             const py = canvas.height / 2 - cameraY + y * CELL_SIZE;
+
+            // Check if cell is in a completed chunk before calling getCell
+            if (grid.isCellInCompletedChunk(x, y)) {
+                // Render completed chunk cells as blank revealed cells
+                ctx.fillStyle = colors.revealed;
+                ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+                
+                if (lodLevel >= 2) {
+                    ctx.strokeRect(px, py, CELL_SIZE, CELL_SIZE);
+                }
+                continue;
+            }
+
+            const cell = grid.getCell(x, y);
 
             if (!cell.isRevealed) {
                 // Draw hidden cell with LoD
