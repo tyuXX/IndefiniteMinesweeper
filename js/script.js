@@ -40,6 +40,8 @@ const colors = {
     hiddenHover: '#30363d',
     revealed: '#0d1117',
     stroke: '#30363d',
+    chunkStroke: '#484f58',
+    chunkEdge: '#58a6ff',
     text: '#c9d1d9',
     mine: '#f85149',
     flag: '#58a6ff'
@@ -316,6 +318,16 @@ function draw() {
                 if (grid.isCellInCompletedChunk(x, y)) {
                     ctx.fillStyle = colors.revealed;
                     ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+                    
+                    // If this cell is adjacent to a non-completed chunk, render the number
+                    if (grid.isAdjacentToNonCompletedChunk(x, y)) {
+                        const adjacentMines = grid.getAdjacentMineCount(x, y);
+                        if (adjacentMines > 0) {
+                            ctx.fillStyle = numberColors[adjacentMines];
+                            ctx.font = `bold ${CELL_SIZE * 0.55}px Inter, sans-serif`;
+                            ctx.fillText(adjacentMines.toString(), px + CELL_SIZE / 2, py + CELL_SIZE / 2);
+                        }
+                    }
                 } else {
                     const cell = grid.getCell(x, y);
                     ctx.fillStyle = cell.isRevealed ? colors.revealed : colors.hidden;
@@ -337,8 +349,20 @@ function draw() {
                 ctx.fillStyle = colors.revealed;
                 ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
                 
+                // Always draw cell grid for completed chunks
                 if (lodLevel >= 2) {
+                    ctx.strokeStyle = colors.stroke;
                     ctx.strokeRect(px, py, CELL_SIZE, CELL_SIZE);
+                }
+                
+                // If this cell is adjacent to a non-completed chunk, render the number
+                if (lodLevel >= 3 && grid.isAdjacentToNonCompletedChunk(x, y)) {
+                    const adjacentMines = grid.getAdjacentMineCount(x, y);
+                    if (adjacentMines > 0) {
+                        ctx.fillStyle = numberColors[adjacentMines];
+                        ctx.font = `bold ${CELL_SIZE * 0.55}px Inter, sans-serif`;
+                        ctx.fillText(adjacentMines.toString(), px + CELL_SIZE / 2, py + CELL_SIZE / 2);
+                    }
                 }
                 continue;
             }
@@ -352,6 +376,7 @@ function draw() {
 
                 // Only draw stroke at higher LoD levels
                 if (lodLevel >= 2) {
+                    ctx.strokeStyle = colors.stroke;
                     ctx.strokeRect(px, py, CELL_SIZE, CELL_SIZE);
                 }
 
@@ -363,6 +388,7 @@ function draw() {
             } else {
                 // Draw revealed cell with LoD
                 if (lodLevel >= 2) {
+                    ctx.strokeStyle = colors.stroke;
                     ctx.strokeRect(px, py, CELL_SIZE, CELL_SIZE);
                 }
 
@@ -383,6 +409,44 @@ function draw() {
                 }
             }
         }
+    }
+    
+    // Draw chunk grid overlay
+    if (lodLevel >= 2) {
+        ctx.strokeStyle = colors.chunkStroke;
+        ctx.lineWidth = 2;
+        
+        const chunkSize = InfiniteGrid.CHUNK_SIZE;
+        const chunkStartX = Math.floor(startX / chunkSize) * chunkSize;
+        const chunkEndX = Math.floor(endX / chunkSize) * chunkSize + chunkSize;
+        const chunkStartY = Math.floor(startY / chunkSize) * chunkSize;
+        const chunkEndY = Math.floor(endY / chunkSize) * chunkSize + chunkSize;
+        
+        // Draw vertical chunk lines
+        for (let x = chunkStartX; x <= chunkEndX; x += chunkSize) {
+            const px = canvas.width / 2 - cameraX + x * CELL_SIZE;
+            const pyStart = canvas.height / 2 - cameraY + chunkStartY * CELL_SIZE;
+            const pyEnd = canvas.height / 2 - cameraY + chunkEndY * CELL_SIZE;
+            
+            ctx.beginPath();
+            ctx.moveTo(px, pyStart);
+            ctx.lineTo(px, pyEnd);
+            ctx.stroke();
+        }
+        
+        // Draw horizontal chunk lines
+        for (let y = chunkStartY; y <= chunkEndY; y += chunkSize) {
+            const py = canvas.height / 2 - cameraY + y * CELL_SIZE;
+            const pxStart = canvas.width / 2 - cameraX + chunkStartX * CELL_SIZE;
+            const pxEnd = canvas.width / 2 - cameraX + chunkEndX * CELL_SIZE;
+            
+            ctx.beginPath();
+            ctx.moveTo(pxStart, py);
+            ctx.lineTo(pxEnd, py);
+            ctx.stroke();
+        }
+        
+        ctx.lineWidth = 1;
     }
 }
 

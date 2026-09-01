@@ -61,18 +61,22 @@ class InfiniteGrid {
 
     getChunkFromCell(x, y) {
         return {
-            x: Math.floor(x / GRID_CONFIG.CHUNK_SIZE),
-            y: Math.floor(y / GRID_CONFIG.CHUNK_SIZE)
+            x: Math.floor(x / InfiniteGrid.CHUNK_SIZE),
+            y: Math.floor(y / InfiniteGrid.CHUNK_SIZE)
         };
     }
 
     getChunkBounds(chunkX, chunkY) {
         return {
-            minX: chunkX * GRID_CONFIG.CHUNK_SIZE,
-            maxX: (chunkX + 1) * GRID_CONFIG.CHUNK_SIZE - 1,
-            minY: chunkY * GRID_CONFIG.CHUNK_SIZE,
-            maxY: (chunkY + 1) * GRID_CONFIG.CHUNK_SIZE - 1
+            minX: chunkX * InfiniteGrid.CHUNK_SIZE,
+            maxX: (chunkX + 1) * InfiniteGrid.CHUNK_SIZE - 1,
+            minY: chunkY * InfiniteGrid.CHUNK_SIZE,
+            maxY: (chunkY + 1) * InfiniteGrid.CHUNK_SIZE - 1
         };
+    }
+    
+    static getChunkSize() {
+        return InfiniteGrid.CHUNK_SIZE;
     }
 
     isChunkCompleted(chunkX, chunkY) {
@@ -103,6 +107,7 @@ class InfiniteGrid {
         }
 
         const bounds = this.getChunkBounds(chunkX, chunkY);
+        const chunkSize = InfiniteGrid.CHUNK_SIZE;
         
         // Remove all individual cells from storage for this chunk
         for (let x = bounds.minX; x <= bounds.maxX; x++) {
@@ -119,6 +124,43 @@ class InfiniteGrid {
     isCellInCompletedChunk(x, y) {
         const chunk = this.getChunkFromCell(x, y);
         return this.completedChunks.has(`${chunk.x},${chunk.y}`);
+    }
+
+    getAdjacentMineCount(x, y) {
+        let count = 0;
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                if (dx === 0 && dy === 0) continue;
+                const adjX = x + dx;
+                const adjY = y + dy;
+                
+                // Check if adjacent cell is in a completed chunk
+                if (this.isCellInCompletedChunk(adjX, adjY)) {
+                    // For completed chunks, we need to recalculate the mine status
+                    const isMine = this._determineIsMine(adjX, adjY);
+                    if (isMine) count++;
+                } else {
+                    // For non-completed chunks, use the cell data
+                    const cell = this.getCell(adjX, adjY);
+                    if (cell.isMine) count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    isAdjacentToNonCompletedChunk(x, y) {
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                if (dx === 0 && dy === 0) continue;
+                const adjX = x + dx;
+                const adjY = y + dy;
+                if (!this.isCellInCompletedChunk(adjX, adjY)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     // Generates or retrieves a cell
@@ -443,3 +485,6 @@ class InfiniteGrid {
         }
     }
 }
+
+// Make CHUNK_SIZE accessible from outside
+InfiniteGrid.CHUNK_SIZE = GRID_CONFIG.CHUNK_SIZE;
